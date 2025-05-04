@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Platformer Game</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background-color: #87CEEB;
+    }
+
+    canvas {
+      background-color: #E5E5E5;
+      border: 2px solid black;
+    }
+  </style>
+</head>
+<body>
+<canvas id="gameCanvas" width="800" height="600"></canvas>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+const GRAVITY = 0.5;
+const JUMP_STRENGTH = -15;
+const GROUND_Y = 540;
+let keys = {
+    left: false,
+    right: false
+};
+let score = 0;
+
+class Player {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.width = 40;
+        this.height = 60;
+        this.speed = 2;
+        this.dy = 0;
+        this.dx = 0;
+        this.jumping = false;
+    }
+
+    move() {
+        if (keys.left) this.dx = -this.speed;
+        else if (keys.right) this.dx = this.speed;
+        else this.dx = 0;
+
+        this.dy += GRAVITY;
+        this.x += this.dx;
+        this.y += this.dy;
+
+        // Keep player within canvas bounds
+        if (this.x < 0) this.x = 0;
+        if (this.x + this.width > canvas.width) this.x = canvas.width - this.width;
+
+        // Stop falling at ground level
+        if (this.y + this.height > GROUND_Y) {
+            this.y = GROUND_Y - this.height;
+            this.dy = 0;
+            this.jumping = false;
+        }
+    }
+
+    jump() {
+        if (!this.jumping) {
+            this.dy = JUMP_STRENGTH;
+            this.jumping = true;
+        }
+    }
+
+    draw() {
+        ctx.fillStyle = "blue";
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+    }
+
+    getBounds() {
+        return { x: this.x, y: this.y, width: this.width, height: this.height };
+    }
+}
+
+class Platform {
+    constructor(x, y, width, height) {
+        this.x = x;
+        this.y = y;
+        this.width = width;
+        this.height = height;
+        this.scored = false;
+    }
+
+    draw() {
+        ctx.fillStyle = "green";
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+    }
+
+    checkCollision(player) {
+        const playerBottom = player.y + player.height;
+        const nextBottom = playerBottom + player.dy;
+        const platformTop = this.y;
+        const isFalling = player.dy >= 0;
+        const isWithinX = player.x + player.width > this.x && player.x < this.x + this.width;
+        const isLanding = playerBottom <= platformTop && nextBottom >= platformTop;
+
+        if (isFalling && isWithinX && isLanding) {
+            player.y = platformTop - player.height;
+            player.dy = 0;
+            player.jumping = false;
+
+            if (!this.scored) {
+                score += 10;
+                this.scored = true;
+            }
+        }
+    }
+}
+
+class Obstacle {
+    constructor(x, y, width, height) {
+        this.x = x;
+        this.y = y;
+        this.width = width;
+        this.height = height;
+    }
+
+    draw() {
+        ctx.fillStyle = "red";
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+    }
+
+    checkCollision(player) {
+        const p = player.getBounds();
+        if (
+            p.x < this.x + this.width &&
+            p.x + p.width > this.x &&
+            p.y < this.y + this.height &&
+            p.y + p.height > this.y
+        ) {
+            alert("Game Over! Final Score: " + score);
+            document.location.reload();
+        }
+    }
+}
+
+function drawScore() {
+    ctx.fillStyle = "black";
+    ctx.font = "20px Arial";
+    ctx.fillText("Score: " + score, 20, 30);
+}
+
+function drawGroundLine() {
+    ctx.fillStyle = "green";
+    ctx.fillRect(0, GROUND_Y, canvas.width, 10);
+}
+
+const player = new Player(100, 100);
+const platforms = [
+    new Platform(50, 450, 200, 10),
+    new Platform(300, 350, 200, 10),
+    new Platform(600, 250, 200, 10)
+];
+const obstacles = [
+    new Obstacle(250, GROUND_Y - 60, 40, 60),
+    new Obstacle(550, 390, 40, 60)
+];
+
+function updateGame() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    player.move();
+
+    platforms.forEach(platform => {
+        platform.checkCollision(player);
+        platform.draw();
+    });
+
+    obstacles.forEach(obstacle => {
+        obstacle.checkCollision(player);
+        obstacle.draw();
+    });
+
+    drawGroundLine();
+    player.draw();
+    drawScore();
+
+    requestAnimationFrame(updateGame);
+}
+
+window.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowLeft") keys.left = true;
+    if (e.key === "ArrowRight") keys.right = true;
+    if (e.key === "ArrowUp") player.jump();
+});
+
+window.addEventListener("keyup", (e) => {
+    if (e.key === "ArrowLeft") keys.left = false;
+    if (e.key === "ArrowRight") keys.right = false;
+});
+
+updateGame();
+</script>
+</body>
+</html>
