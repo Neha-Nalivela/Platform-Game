@@ -19,10 +19,87 @@
       background-color: #E5E5E5;
       border: 2px solid black;
     }
+
+    @media (max-width: 600px) {
+      canvas {
+        width: 100%;
+        height: auto;
+      }
+      #score {
+        font-size: 18px;
+      }
+    }
+
+    #settingsModal {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background-color: white;
+      padding: 20px;
+      border: 2px solid black;
+      z-index: 1000;
+    }
+
+    #settingsModal input[type="range"] {
+      width: 100%;
+    }
   </style>
 </head>
 <body>
-<canvas id="gameCanvas" width="800" height="600"></canvas>
+<canvas 
+  id="gameCanvas" 
+  width="800" 
+  height="600" 
+  aria-label="Platform game. Use arrow keys to move and jump." 
+  role="application">
+</canvas>
+
+<div id="score" style="position: absolute; top: 10px; left: 20px; font-size: 24px; color: black;">Score: 0</div>
+
+<div id="mainMenu" style="display: flex; flex-direction: column; align-items: center; position: absolute; top: 20%; width: 100%;">
+  <h1>Platform Game</h1>
+  <button onclick="startGame()">Start Game</button>
+  <button onclick="openSettings()">Settings</button>
+  <button onclick="showInstructions()">Instructions</button>
+</div>
+
+<div id="gameOver" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.8); color: white; justify-content: center; align-items: center; flex-direction: column;">
+  <h1>Game Over</h1>
+  <div id="finalScore"></div>
+  <div id="leaderboard"></div>
+  <button onclick="restartGame()">Retry</button>
+</div>
+
+<div id="pauseMenu" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.8); color: white; justify-content: center; align-items: center; flex-direction: column;">
+  <h1>Paused</h1>
+  <button onclick="togglePause()">Resume</button>
+  <button onclick="restartGame()">Restart</button>
+  <button onclick="showInstructions()">Instructions</button>
+</div>
+
+<button onclick="togglePause()">Pause/Resume</button>
+<button onclick="toggleColorBlindMode()">Toggle Color-Blind Mode</button>
+<button onclick="openSettings()">Customize Controls</button>
+
+<div id="settingsModal">
+  <h2>Settings</h2>
+  <label>Sound: <input type="checkbox" id="soundToggle" checked></label><br><br>
+  <label>Volume: <input type="range" id="volumeSlider" min="0" max="100" value="50"></label><br><br>
+  <label>Difficulty:
+    <select id="difficultySelector">
+      <option value="easy">Easy</option>
+      <option value="medium" selected>Medium</option>
+      <option value="hard">Hard</option>
+    </select>
+  </label><br><br>
+  <label>Left Control: <input type="text" id="controlLeft" maxlength="20"></label><br><br>
+  <label>Right Control: <input type="text" id="controlRight" maxlength="20"></label><br><br>
+  <label>Jump Control: <input type="text" id="controlJump" maxlength="20"></label><br><br>
+  <button onclick="saveSettings()">Save</button>
+  <button onclick="closeSettings()">Cancel</button>
+</div>
 
 <script>
 const canvas = document.getElementById("gameCanvas");
@@ -31,180 +108,252 @@ const ctx = canvas.getContext("2d");
 const GRAVITY = 0.5;
 const JUMP_STRENGTH = -15;
 const GROUND_Y = 540;
-let keys = {
-    left: false,
-    right: false
-};
+let keys = { left: false, right: false };
 let score = 0;
+let controls = {
+  left: "ArrowLeft",
+  right: "ArrowRight",
+  jump: "ArrowUp"
+};
+let gamePaused = false;
+let colorBlindMode = false;
+let leaderboardScores = JSON.parse(localStorage.getItem("leaderboardScores") || "[]");
+
+function openSettings() {
+  document.getElementById("settingsModal").style.display = "block";
+  document.getElementById("controlLeft").value = controls.left;
+  document.getElementById("controlRight").value = controls.right;
+  document.getElementById("controlJump").value = controls.jump;
+}
+
+function closeSettings() {
+  document.getElementById("settingsModal").style.display = "none";
+}
+
+function saveSettings() {
+  const newLeft = document.getElementById("controlLeft").value.trim();
+  const newRight = document.getElementById("controlRight").value.trim();
+  const newJump = document.getElementById("controlJump").value.trim();
+
+  if (newLeft) controls.left = newLeft;
+  if (newRight) controls.right = newRight;
+  if (newJump) controls.jump = newJump;
+
+  const soundEnabled = document.getElementById("soundToggle").checked;
+  const volumeLevel = document.getElementById("volumeSlider").value;
+  const difficulty = document.getElementById("difficultySelector").value;
+
+  console.log("Sound:", soundEnabled);
+  console.log("Volume:", volumeLevel);
+  console.log("Difficulty:", difficulty);
+
+  alert("Settings saved!");
+  closeSettings();
+}
+
+window.addEventListener("keydown", (e) => {
+  if (e.key === controls.left) keys.left = true;
+  if (e.key === controls.right) keys.right = true;
+  if (e.key === controls.jump) player.jump();
+  if (e.key === "p") togglePause();
+});
+
+window.addEventListener("keyup", (e) => {
+  if (e.key === controls.left) keys.left = false;
+  if (e.key === controls.right) keys.right = false;
+});
+
+canvas.addEventListener("touchstart", (e) => {
+  const touchX = e.touches[0].clientX;
+  if (touchX < canvas.width / 2) keys.left = true;
+  else keys.right = true;
+  player.jump();
+});
+
+canvas.addEventListener("touchend", () => {
+  keys.left = false;
+  keys.right = false;
+});
+
+function togglePause() {
+  gamePaused = !gamePaused;
+  document.getElementById("pauseMenu").style.display = gamePaused ? "flex" : "none";
+  if (!gamePaused) updateGame();
+}
+
+function toggleColorBlindMode() {
+  colorBlindMode = !colorBlindMode;
+  document.body.style.backgroundColor = colorBlindMode ? "#000000" : "#87CEEB";
+}
+
+function showInstructions() {
+  alert("Use arrow keys to move and jump. Avoid obstacles and collect points!");
+}
+
+function showGameOver() {
+  document.getElementById("finalScore").textContent = `Your Score: ${score}`;
+  leaderboardScores.push(score);
+  leaderboardScores.sort((a, b) => b - a);
+  leaderboardScores = leaderboardScores.slice(0, 5);
+  localStorage.setItem("leaderboardScores", JSON.stringify(leaderboardScores));
+
+  const leaderboardHTML = leaderboardScores.map((s, i) => `<div>#${i + 1}: ${s}</div>`).join("");
+  document.getElementById("leaderboard").innerHTML = `<h2>Leaderboard</h2>${leaderboardHTML}`;
+
+  document.getElementById("gameOver").style.display = "flex";
+}
+
+function restartGame() {
+  document.location.reload();
+}
+
+function startGame() {
+  document.getElementById("mainMenu").style.display = "none";
+  updateGame();
+}
 
 class Player {
-    constructor(x, y) {
-        this.x = x;
-        this.y = y;
-        this.width = 40;
-        this.height = 60;
-        this.speed = 2;
-        this.dy = 0;
-        this.dx = 0;
-        this.jumping = false;
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.width = 40;
+    this.height = 60;
+    this.speed = 2;
+    this.dy = 0;
+    this.dx = 0;
+    this.jumping = false;
+  }
+
+  move() {
+    this.dx = keys.left ? -this.speed : keys.right ? this.speed : 0;
+    this.dy += GRAVITY;
+    this.x += this.dx;
+    this.y += this.dy;
+
+    if (this.x < 0) this.x = 0;
+    if (this.x + this.width > canvas.width) this.x = canvas.width - this.width;
+
+    if (this.y + this.height > GROUND_Y) {
+      this.y = GROUND_Y - this.height;
+      this.dy = 0;
+      this.jumping = false;
     }
+  }
 
-    move() {
-        if (keys.left) this.dx = -this.speed;
-        else if (keys.right) this.dx = this.speed;
-        else this.dx = 0;
-
-        this.dy += GRAVITY;
-        this.x += this.dx;
-        this.y += this.dy;
-
-        // Keep player within canvas bounds
-        if (this.x < 0) this.x = 0;
-        if (this.x + this.width > canvas.width) this.x = canvas.width - this.width;
-
-        // Stop falling at ground level
-        if (this.y + this.height > GROUND_Y) {
-            this.y = GROUND_Y - this.height;
-            this.dy = 0;
-            this.jumping = false;
-        }
+  jump() {
+    if (!this.jumping) {
+      this.dy = JUMP_STRENGTH;
+      this.jumping = true;
     }
+  }
 
-    jump() {
-        if (!this.jumping) {
-            this.dy = JUMP_STRENGTH;
-            this.jumping = true;
-        }
-    }
+  draw() {
+    ctx.fillStyle = colorBlindMode ? "yellow" : "blue";
+    ctx.fillRect(this.x, this.y, this.width, this.height);
+  }
 
-    draw() {
-        ctx.fillStyle = "blue";
-        ctx.fillRect(this.x, this.y, this.width, this.height);
-    }
-
-    getBounds() {
-        return { x: this.x, y: this.y, width: this.width, height: this.height };
-    }
+  getBounds() {
+    return { x: this.x, y: this.y, width: this.width, height: this.height };
+  }
 }
 
 class Platform {
-    constructor(x, y, width, height) {
-        this.x = x;
-        this.y = y;
-        this.width = width;
-        this.height = height;
-        this.scored = false;
+  constructor(x, y, width, height) {
+    this.x = x;
+    this.y = y;
+    this.width = width;
+    this.height = height;
+    this.scored = false;
+  }
+
+  draw() {
+    ctx.fillStyle = colorBlindMode ? "orange" : "green";
+    ctx.fillRect(this.x, this.y, this.width, this.height);
+  }
+
+  checkCollision(player) {
+    const playerBottom = player.y + player.height;
+    const nextBottom = playerBottom + player.dy;
+    const platformTop = this.y;
+    const isFalling = player.dy >= 0;
+    const isWithinX = player.x + player.width > this.x && player.x < this.x + this.width;
+    const isLanding = playerBottom <= platformTop && nextBottom >= platformTop;
+
+    if (isFalling && isWithinX && isLanding) {
+      player.y = platformTop - player.height;
+      player.dy = 0;
+      player.jumping = false;
+      if (!this.scored) {
+        score += 10;
+        this.scored = true;
+      }
     }
-
-    draw() {
-        ctx.fillStyle = "green";
-        ctx.fillRect(this.x, this.y, this.width, this.height);
-    }
-
-    checkCollision(player) {
-        const playerBottom = player.y + player.height;
-        const nextBottom = playerBottom + player.dy;
-        const platformTop = this.y;
-        const isFalling = player.dy >= 0;
-        const isWithinX = player.x + player.width > this.x && player.x < this.x + this.width;
-        const isLanding = playerBottom <= platformTop && nextBottom >= platformTop;
-
-        if (isFalling && isWithinX && isLanding) {
-            player.y = platformTop - player.height;
-            player.dy = 0;
-            player.jumping = false;
-
-            if (!this.scored) {
-                score += 10;
-                this.scored = true;
-            }
-        }
-    }
+  }
 }
 
 class Obstacle {
-    constructor(x, y, width, height) {
-        this.x = x;
-        this.y = y;
-        this.width = width;
-        this.height = height;
-    }
+  constructor(x, y, width, height) {
+    this.x = x;
+    this.y = y;
+    this.width = width;
+    this.height = height;
+  }
 
-    draw() {
-        ctx.fillStyle = "red";
-        ctx.fillRect(this.x, this.y, this.width, this.height);
-    }
+  draw() {
+    ctx.fillStyle = colorBlindMode ? "purple" : "red";
+    ctx.fillRect(this.x, this.y, this.width, this.height);
+  }
 
-    checkCollision(player) {
-        const p = player.getBounds();
-        if (
-            p.x < this.x + this.width &&
-            p.x + p.width > this.x &&
-            p.y < this.y + this.height &&
-            p.y + p.height > this.y
-        ) {
-            alert("Game Over! Final Score: " + score);
-            document.location.reload();
-        }
+  checkCollision(player) {
+    const p = player.getBounds();
+    if (p.x < this.x + this.width && p.x + p.width > this.x && p.y < this.y + this.height && p.y + p.height > this.y) {
+      showGameOver();
     }
-}
-
-function drawScore() {
-    ctx.fillStyle = "black";
-    ctx.font = "20px Arial";
-    ctx.fillText("Score: " + score, 20, 30);
+  }
 }
 
 function drawGroundLine() {
-    ctx.fillStyle = "green";
-    ctx.fillRect(0, GROUND_Y, canvas.width, 10);
+  ctx.fillStyle = "green";
+  ctx.fillRect(0, GROUND_Y, canvas.width, 10);
+}
+
+function drawScore() {
+  document.getElementById("score").textContent = `Score: ${score}`;
 }
 
 const player = new Player(100, 100);
 const platforms = [
-    new Platform(50, 450, 200, 10),
-    new Platform(300, 350, 200, 10),
-    new Platform(600, 250, 200, 10)
+  new Platform(50, 450, 200, 10),
+  new Platform(300, 350, 200, 10),
+  new Platform(600, 250, 200, 10)
 ];
 const obstacles = [
-    new Obstacle(250, GROUND_Y - 60, 40, 60),
-    new Obstacle(550, 390, 40, 60)
+  new Obstacle(250, GROUND_Y - 60, 40, 60),
+  new Obstacle(550, 390, 40, 60)
 ];
 
 function updateGame() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (gamePaused) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    player.move();
+  player.move();
 
-    platforms.forEach(platform => {
-        platform.checkCollision(player);
-        platform.draw();
-    });
+  platforms.forEach(p => {
+    p.checkCollision(player);
+    p.draw();
+  });
 
-    obstacles.forEach(obstacle => {
-        obstacle.checkCollision(player);
-        obstacle.draw();
-    });
+  obstacles.forEach(o => {
+    o.checkCollision(player);
+    o.draw();
+  });
 
-    drawGroundLine();
-    player.draw();
-    drawScore();
+  drawGroundLine();
+  player.draw();
+  drawScore();
 
-    requestAnimationFrame(updateGame);
+  requestAnimationFrame(updateGame);
 }
-
-window.addEventListener("keydown", (e) => {
-    if (e.key === "ArrowLeft") keys.left = true;
-    if (e.key === "ArrowRight") keys.right = true;
-    if (e.key === "ArrowUp") player.jump();
-});
-
-window.addEventListener("keyup", (e) => {
-    if (e.key === "ArrowLeft") keys.left = false;
-    if (e.key === "ArrowRight") keys.right = false;
-});
-
-updateGame();
 </script>
 </body>
 </html>
